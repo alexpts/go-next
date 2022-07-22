@@ -1,0 +1,35 @@
+name: ci-tests
+
+on:
+  pull_request: {}
+  release: {}
+  push:
+    branches: [ master ]
+
+jobs:
+  tests:
+    strategy:
+      matrix:
+        go-version: [ 1.19.x ]
+        #os: [ ubuntu-latest, macos-latest, windows-latest ]
+        os: [ ubuntu-latest ]
+
+    name: unit tests - ${{ matrix.go-version }} ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - run: go version
+
+      - run: go mod verify
+
+      - name: Unit tests
+        run: go test -race -v -coverprofile=coverage.out -coverpkg github.com/alexpts/go-next/... -covermode=atomic -timeout 2m ./next/...
+      #- run: go tool cover -func=coverage.out -o=coverage.out
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3

@@ -1,0 +1,3 @@
+[submodule "docs-src"]
+	path = docs-src
+	url = git@github.com:alexpts/go-next-docs.git
