@@ -6,5 +6,6 @@ func InSlice[E comparable](s []E, v E) bool {
 			return true
 		}
 	}
+
 	return false
 }
