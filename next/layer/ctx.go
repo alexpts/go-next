@@ -15,7 +15,7 @@ type HandlerCtx struct {
 	Runner     INextHandler
 }
 
-func (s *HandlerCtx) Next() {
+func (s *HandlerCtx) Next() error {
 	handler := s.Runner.GetNextHandler(s)
-	handler(s)
+	return handler(s)
 }

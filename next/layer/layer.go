@@ -5,7 +5,7 @@ import (
 )
 
 type Restrictions map[string]string
-type Handler func(ctx *HandlerCtx)
+type Handler func(ctx *HandlerCtx) error
 
 type Layer struct {
 	Handlers []Handler

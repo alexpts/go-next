@@ -28,8 +28,9 @@ func TestMinimalApp(t *testing.T) {
 	request := createRequest(`GET`, `/`)
 
 	app.Use(Layer{},
-		func(ctx *HandlerCtx) {
+		func(ctx *HandlerCtx) error {
 			ctx.Response.AppendBodyString(`Hello`)
+			return nil
 		},
 	)
 
@@ -42,12 +43,13 @@ func TestMultiHandler(t *testing.T) {
 	request := createRequest(`GET`, `/users/12/`)
 
 	app.Use(Layer{},
-		func(ctx *HandlerCtx) {
+		func(ctx *HandlerCtx) error {
 			ctx.Response.AppendBodyString(`Hello`)
-			ctx.Next()
+			return ctx.Next()
 		},
-		func(ctx *HandlerCtx) {
-			_, _ = ctx.WriteString(` World`)
+		func(ctx *HandlerCtx) error {
+			_, err := ctx.WriteString(` World`)
+			return err
 		},
 	)
 
@@ -61,17 +63,18 @@ func TestMultiLayers(t *testing.T) {
 
 	app.AddLayer(Layer{}.
 		WithHandlers(
-			func(ctx *HandlerCtx) {
+			func(ctx *HandlerCtx) error {
 				ctx.Response.AppendBodyString(`Hello`)
-				ctx.Next()
+				return ctx.Next()
 			},
 		),
 	)
 
 	app.AddLayer(Layer{}.
 		WithHandlers(
-			func(ctx *HandlerCtx) {
-				_, _ = ctx.WriteString(` World`)
+			func(ctx *HandlerCtx) error {
+				_, err := ctx.WriteString(` World`)
+				return err
 			},
 		),
 	)
@@ -85,12 +88,13 @@ func TestLayerPriority(t *testing.T) {
 	app := NewApp()
 
 	app.
-		Use(Layer{Priority: 100}, func(ctx *HandlerCtx) {
+		Use(Layer{Priority: 100}, func(ctx *HandlerCtx) error {
 			ctx.Response.AppendBodyString(`1-`) // run second
+			return nil
 		}).
-		Use(Layer{Priority: 200}, func(ctx *HandlerCtx) {
+		Use(Layer{Priority: 200}, func(ctx *HandlerCtx) error {
 			ctx.Response.AppendBodyString(`2-`) // run first
-			ctx.Next()
+			return ctx.Next()
 		})
 
 	app.Handle(request)
@@ -101,8 +105,8 @@ func TestDelegateToNotDefinedLayer(t *testing.T) {
 	request := createRequest(`GET`, `/`)
 	app := NewApp()
 
-	app.Use(Layer{}, func(ctx *HandlerCtx) {
-		ctx.Next()
+	app.Use(Layer{}, func(ctx *HandlerCtx) error {
+		return ctx.Next()
 	})
 
 	assert.Panics(t, func() {
@@ -112,16 +116,17 @@ func TestDelegateToNotDefinedLayer(t *testing.T) {
 
 func TestFallbackLayer(t *testing.T) {
 	request := createRequest(`GET`, `/`)
-	fallbackLayer := Layer{}.WithHandlers(func(ctx *HandlerCtx) {
+	fallbackLayer := Layer{}.WithHandlers(func(ctx *HandlerCtx) error {
 		ctx.Response.SetStatusCode(500)
 		ctx.SetContentType("application/json")
 		ctx.Response.AppendBody([]byte(`{"error": "not found handler"}`))
+		return nil
 	})
 
 	app := ProvideMicroApp(nil, nil, &fallbackLayer)
 
-	app.Use(Layer{}, func(ctx *HandlerCtx) {
-		ctx.Next()
+	app.Use(Layer{}, func(ctx *HandlerCtx) error {
+		return ctx.Next()
 	})
 
 	app.Handle(request)
@@ -135,23 +140,25 @@ func TestFilterByHttpMethod(t *testing.T) {
 	app := NewApp()
 
 	app.
-		Use(Layer{}, func(ctx *HandlerCtx) {
+		Use(Layer{}, func(ctx *HandlerCtx) error {
 			ctx.Response.AppendBodyString(`1-`)
-			ctx.Next()
+			return ctx.Next()
 		}).
 		// Disallow POST
-		Use(Layer{Methods: []string{`POST`}}, func(ctx *HandlerCtx) {
+		Use(Layer{Methods: []string{`POST`}}, func(ctx *HandlerCtx) error {
 			ctx.Response.AppendBodyString(`2-`)
-			ctx.Next()
+			_ = ctx.Next()
 			ctx.Response.AppendBodyString(`2_2-`)
+			return nil
 		}).
 		// Allow one of GET
-		Use(Layer{Methods: []string{`POST`, `GET`}}, func(ctx *HandlerCtx) {
+		Use(Layer{Methods: []string{`POST`, `GET`}}, func(ctx *HandlerCtx) error {
 			ctx.Response.AppendBodyString(`3-`)
-			ctx.Next()
+			return ctx.Next()
 		}).
-		Use(Layer{Methods: []string{`GET`}}, func(ctx *HandlerCtx) {
+		Use(Layer{Methods: []string{`GET`}}, func(ctx *HandlerCtx) error {
 			ctx.Response.AppendBodyString(`4-`)
+			return nil
 		})
 
 	app.Handle(request)
@@ -163,16 +170,17 @@ func TestFilterByPath(t *testing.T) {
 	app := NewApp()
 
 	app.
-		Use(Layer{Path: `/users/`}, func(ctx *HandlerCtx) {
+		Use(Layer{Path: `/users/`}, func(ctx *HandlerCtx) error {
 			ctx.SetUserValue(`layer1`, `users`)
-			ctx.Next()
+			return ctx.Next()
 		}).
-		Use(Layer{Path: `/admin/`}, func(ctx *HandlerCtx) {
+		Use(Layer{Path: `/admin/`}, func(ctx *HandlerCtx) error {
 			ctx.SetUserValue(`layer2`, `admin`)
-			ctx.Next()
+			return ctx.Next()
 		}).
-		Use(Layer{}, func(ctx *HandlerCtx) {
+		Use(Layer{}, func(ctx *HandlerCtx) error {
 			ctx.SetUserValue(`layer3`, `all`)
+			return nil
 		})
 
 	app.Handle(request)
@@ -185,11 +193,13 @@ func TestMatchUrlParam(t *testing.T) {
 	request := createRequest(`GET`, `/city/london/`)
 	app := NewApp()
 
-	app.Use(Layer{Path: `/city/{slug}/`}, func(ctx *HandlerCtx) {
+	app.Use(Layer{Path: `/city/{slug}/`}, func(ctx *HandlerCtx) error {
 		uid, ok := ctx.UriParams["slug"]
 		if ok {
 			ctx.Response.AppendBodyString(uid)
 		}
+
+		return nil
 	})
 
 	app.Handle(request)
@@ -230,8 +240,9 @@ func TestFastHttpMethod(t *testing.T) {
 			request := createRequest(provider.method, `/`)
 			app := NewApp()
 
-			handler := func(ctx *HandlerCtx) {
+			handler := func(ctx *HandlerCtx) error {
 				ctx.Response.AppendBodyString(string(ctx.Method()))
+				return nil
 			}
 
 			switch provider.method {
@@ -256,21 +267,24 @@ func TestFastHttpMethod(t *testing.T) {
 func TestMount(t *testing.T) {
 	apiV1 := NewApp()
 
-	apiV1.Use(Layer{}, func(ctx *HandlerCtx) {
-		ctx.Next()
+	apiV1.Use(Layer{}, func(ctx *HandlerCtx) error {
+		return ctx.Next()
 	})
-	apiV1.Get(`/users/`, Layer{}, func(ctx *HandlerCtx) {
+	apiV1.Get(`/users/`, Layer{}, func(ctx *HandlerCtx) error {
 		ctx.Response.AppendBodyString(`v1 - users`)
+		return nil
 	})
 
 	apiV2 := NewApp()
-	apiV2.Get(`/users/`, Layer{}, func(ctx *HandlerCtx) {
+	apiV2.Get(`/users/`, Layer{}, func(ctx *HandlerCtx) error {
 		ctx.Response.AppendBodyString(`v2 - users`)
+		return nil
 	})
 
 	reuseApp := NewApp()
-	reuseApp.Get(`/users/`, Layer{}, func(ctx *HandlerCtx) {
+	reuseApp.Get(`/users/`, Layer{}, func(ctx *HandlerCtx) error {
 		ctx.Response.AppendBodyString(`reuse - users`)
+		return nil
 	})
 
 	app := NewApp()
@@ -297,8 +311,9 @@ func TestFastHttpHandler(t *testing.T) {
 	request := createRequest(`GET`, `/`)
 
 	app.Use(Layer{},
-		func(ctx *HandlerCtx) {
+		func(ctx *HandlerCtx) error {
 			ctx.Response.AppendBodyString(`Hello`)
+			return nil
 		},
 	)
 
